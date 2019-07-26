@@ -80,6 +80,7 @@ var (
 	cmdQUIT     command = []byte("QUIT")
 	cmdDATA     command = []byte("DATA")
 	cmdSTARTTLS command = []byte("STARTTLS")
+	cmdAuth     command = []byte("AUTH LOGIN")
 )
 
 func (c command) match(in []byte) bool {
@@ -318,6 +319,11 @@ func (s *server) allowsHost(host string) bool {
 	return false
 }
 
+// Verifies the client passed the auth if the auth required
+func (s *server) isAuth(authRequired bool, loginStatus bool) bool {
+	return !(authRequired) || loginStatus
+}
+
 const commandSuffix = "\r\n"
 
 // Reads from the client until a \n terminator is encountered,
@@ -365,6 +371,7 @@ func (s *server) handleClient(client *client) {
 
 	// Extended feature advertisements
 	messageSize := fmt.Sprintf("250-SIZE %d\r\n", sc.MaxSize)
+	advertiseAuth := "250-AUTH LOGIN\r\n"
 	pipelining := "250-PIPELINING\r\n"
 	advertiseTLS := "250-STARTTLS\r\n"
 	advertiseEnhancedStatusCodes := "250-ENHANCEDSTATUSCODES\r\n"
@@ -389,6 +396,10 @@ func (s *server) handleClient(client *client) {
 		advertiseTLS = ""
 	}
 	r := response.Canned
+	authCmd := cmdAuthUsername
+	auth := &Auth{
+		status: false,
+	}
 	for client.isAlive() {
 		switch client.state {
 		case ClientGreeting:
@@ -434,6 +445,7 @@ func (s *server) handleClient(client *client) {
 				client.resetTransaction()
 				client.sendResponse(ehlo,
 					messageSize,
+					advertiseAuth,
 					pipelining,
 					advertiseTLS,
 					advertiseEnhancedStatusCodes,
@@ -462,6 +474,10 @@ func (s *server) handleClient(client *client) {
 				}
 				client.sendResponse(r.SuccessMailCmd)
 			case cmdMAIL.match(cmd):
+				if !s.isAuth(sc.AuthRequired, auth.status) {
+					client.sendResponse(r.FailAuthRequired)
+					break
+				}
 				if client.isInTransaction() {
 					client.sendResponse(r.FailNestedMailCmd)
 					break
@@ -476,8 +492,11 @@ func (s *server) handleClient(client *client) {
 					client.MailFrom = mail.Address{}
 				}
 				client.sendResponse(r.SuccessMailCmd)
-
 			case cmdRCPT.match(cmd):
+				if !s.isAuth(sc.AuthRequired, auth.status) {
+					client.sendResponse(r.FailAuthRequired)
+					break
+				}
 				if len(client.RcptTo) > rfc5321.LimitRecipients {
 					client.sendResponse(r.ErrorTooManyRecipients)
 					break
@@ -516,6 +535,10 @@ func (s *server) handleClient(client *client) {
 				client.kill()
 
 			case cmdDATA.match(cmd):
+				if !s.isAuth(sc.AuthRequired, auth.status) {
+					client.sendResponse(r.FailAuthRequired)
+					break
+				}
 				if len(client.RcptTo) == 0 {
 					client.sendResponse(r.FailNoRecipientsDataCmd)
 					break
@@ -523,8 +546,20 @@ func (s *server) handleClient(client *client) {
 				client.sendResponse(r.SuccessDataCmd)
 				client.state = ClientData
 
-			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
+			case cmdAuth.match(cmd):
+				if auth.status == true {
+					client.sendResponse(r.FailNoIdentityChangesPermitted)
+					break
+				}
+				// Status code and the base64 encoded "Username"
+				client.sendResponse("334 VXNlcm5hbWU6")
+				client.state = ClientAuth
 
+			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
+				if !s.isAuth(sc.AuthRequired, auth.status) {
+					client.sendResponse(r.FailAuthRequired)
+					break
+				}
 				client.sendResponse(r.SuccessStartTLSCmd)
 				client.state = ClientStartTLS
 			default:
@@ -573,6 +608,35 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientShutdown
 			}
 			client.resetTransaction()
+
+		case ClientAuth:
+			switch {
+			case authCmd.match(cmdAuthUsername):
+				var err error
+				auth.username, err = client.authReader.ReadLine()
+				if err != nil {
+					s.log().WithError(err).Error("Username parse fail")
+					break
+				}
+				// Status code and the base64 encoded Password
+				client.sendResponse("334 UGFzc3dvcmQ6")
+				authCmd = cmdAuthPassword
+			case authCmd.match(cmdAuthPassword):
+				var err error
+				auth.password, err = client.authReader.ReadLine()
+				if err != nil {
+					s.log().WithError(err).Error("Password parse fail")
+					break
+				}
+				client.state = ClientCmd
+				auth.status = true
+				isValidate := Validator.Vaildate(auth)
+				if isValidate == true {
+					client.sendResponse(r.SuccessAuthentication)
+				} else {
+					client.sendResponse(r.FailAuthNotAccepted)
+				}
+			}
 
 		case ClientStartTLS:
 			if !client.TLS && sc.TLS.StartTLSOn {

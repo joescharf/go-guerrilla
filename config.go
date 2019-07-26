@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flashmob/go-guerrilla/backends"
-	"github.com/flashmob/go-guerrilla/log"
 	"os"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/flashmob/go-guerrilla/backends"
+	"github.com/flashmob/go-guerrilla/log"
 )
 
 // AppConfig is the holder of the configuration of the app
@@ -58,6 +59,10 @@ type ServerConfig struct {
 	// XClientOn when using a proxy such as Nginx, XCLIENT command is used to pass the
 	// original client's IP address & client's HELO
 	XClientOn bool `json:"xclient_on,omitempty"`
+
+	// Extension for smtp which required the login before user send the Mail to server
+	// which base on the rfc4954
+	AuthRequired bool `json:"auth_required"`
 }
 
 type ServerTLSConfig struct {

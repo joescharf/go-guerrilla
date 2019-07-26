@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/flashmob/go-guerrilla/backends"
-	"github.com/flashmob/go-guerrilla/log"
 	"io/ioutil"
 	"time"
+
+	"github.com/flashmob/go-guerrilla/backends"
+	"github.com/flashmob/go-guerrilla/log"
 )
 
 // Daemon provides a convenient API when using go-guerrilla as a package in your Go project.
@@ -188,6 +189,10 @@ func (d *Daemon) Unsubscribe(topic Event, handler interface{}) error {
 		return nil
 	}
 	return d.g.Unsubscribe(topic, handler)
+}
+
+func (d *Daemon) AddAuthValidate(f VaildateFunc) {
+	Validator.AddAuthVaildator(f)
 }
 
 // log returns a logger that implements our log.Logger interface.
