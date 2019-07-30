@@ -191,7 +191,7 @@ func (d *Daemon) Unsubscribe(topic Event, handler interface{}) error {
 	return d.g.Unsubscribe(topic, handler)
 }
 
-func (d *Daemon) AddAuthValidate(f VaildateFunc) {
+func (d *Daemon) AddAuthValidate(f VaildateCallbackFunc) {
 	Validator.AddAuthVaildator(f)
 }
 
