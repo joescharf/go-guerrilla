@@ -70,6 +70,11 @@ func (d *Daemon) Start() (err error) {
 	}
 	err = d.g.Start()
 	if err == nil {
+		if d.Logger != nil {
+			d.g.SetLogger(d.Logger)
+			d.Log().Infof("main log configured to customize logger")
+			return
+		}
 		if err := d.resetLogger(); err == nil {
 			d.Log().Infof("main log configured to %s", d.Config.LogFile)
 		}

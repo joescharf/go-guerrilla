@@ -610,22 +610,19 @@ func (s *server) handleClient(client *client) {
 			client.resetTransaction()
 
 		case ClientAuth:
+			var err error
 			switch {
 			case authCmd.match(cmdAuthUsername):
-				var err error
 				auth.username, err = client.authReader.ReadLine()
 				if err != nil {
-					s.log().WithError(err).Error("Username parse fail")
 					break
 				}
 				// Status code and the base64 encoded Password
 				client.sendResponse("334 UGFzc3dvcmQ6")
 				authCmd = cmdAuthPassword
 			case authCmd.match(cmdAuthPassword):
-				var err error
 				auth.password, err = client.authReader.ReadLine()
 				if err != nil {
-					s.log().WithError(err).Error("Password parse fail")
 					break
 				}
 				client.state = ClientCmd
@@ -636,6 +633,24 @@ func (s *server) handleClient(client *client) {
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
+			}
+
+			if err == io.EOF {
+				s.log().WithError(err).Warnf("Client closed the connection: %s", client.RemoteIP)
+				return
+			} else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				s.log().WithError(err).Warnf("Timeout: %s", client.RemoteIP)
+				return
+			} else if err == LineLimitExceeded {
+				client.sendResponse(r.FailLineTooLong)
+				client.kill()
+			} else if err != nil {
+				s.log().WithError(err).Warnf("Read error: %s", client.RemoteIP)
+				client.kill()
+			}
+
+			if s.isShuttingDown() {
+				client.state = ClientShutdown
 			}
 
 		case ClientStartTLS:
