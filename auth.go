@@ -1,6 +1,9 @@
 package guerrilla
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/base64"
+)
 
 type authCommand []byte
 
@@ -37,7 +40,17 @@ func (v *AuthVaildator) AddAuthVaildator(f VaildateCallbackFunc) {
 
 func (v *AuthVaildator) Vaildate(a *Auth) bool {
 	for _, f := range v.handleFunctions {
-		isValidate := f(a.username, a.password)
+		username, err := base64.StdEncoding.DecodeString(a.username)
+		if err != nil {
+			return false
+		}
+
+		password, err := base64.StdEncoding.DecodeString(a.password)
+		if err != nil {
+			return false
+		}
+
+		isValidate := f(string(username), string(password))
 		if isValidate == false {
 			return isValidate
 		}
