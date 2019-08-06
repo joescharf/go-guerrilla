@@ -632,6 +632,7 @@ func (s *server) handleClient(client *client) {
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
+				authCmd = cmdAuthUsername
 				client.state = ClientCmd
 			}
 
