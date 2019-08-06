@@ -625,14 +625,14 @@ func (s *server) handleClient(client *client) {
 				if err != nil {
 					break
 				}
-				client.state = ClientCmd
-				auth.status = true
 				isValidate := Validator.Vaildate(auth)
 				if isValidate == true {
+					auth.status = true
 					client.sendResponse(r.SuccessAuthentication)
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
+				client.state = ClientCmd
 			}
 
 			if err == io.EOF {
