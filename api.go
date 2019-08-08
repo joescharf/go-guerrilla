@@ -196,8 +196,9 @@ func (d *Daemon) Unsubscribe(topic Event, handler interface{}) error {
 	return d.g.Unsubscribe(topic, handler)
 }
 
-func (d *Daemon) AddAuthValidate(f VaildateCallbackFunc) {
-	Validator.AddAuthVaildator(f)
+// for add the validator function to validator
+func (d *Daemon) AddAuthValidate(f ValidateCallbackFunc) {
+	Validator.AddAuthValidator(f)
 }
 
 // log returns a logger that implements our log.Logger interface.

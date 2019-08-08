@@ -43,6 +43,11 @@ type Address struct {
 	NullPath bool
 }
 
+type AuthResult struct {
+	Username string
+	Password string
+}
+
 func (ep *Address) String() string {
 	return fmt.Sprintf("%s@%s", ep.User, ep.Host)
 }
@@ -77,6 +82,8 @@ type Envelope struct {
 	RemoteIP string
 	// Message sent in EHLO command
 	Helo string
+	//Auth Result
+	Auth AuthResult
 	// Sender
 	MailFrom Address
 	// Recipients

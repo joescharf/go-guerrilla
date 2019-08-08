@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -625,13 +626,27 @@ func (s *server) handleClient(client *client) {
 				if err != nil {
 					break
 				}
-				isValidate := Validator.Vaildate(auth)
-				if isValidate == true {
+				isValidate := Validator.Validate(auth)
+				if isValidate {
 					auth.status = true
 					client.sendResponse(r.SuccessAuthentication)
+					username, err := base64.StdEncoding.DecodeString(auth.username)
+					if err != nil {
+						s.log().WithError(err).Error("Fail to decode username")
+						break
+					}
+
+					password, err := base64.StdEncoding.DecodeString(auth.password)
+					if err != nil {
+						s.log().WithError(err).Error("Fail to decode password")
+						break
+					}
+					client.Auth.Username = string(username)
+					client.Auth.Password = string(password)
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
+				// Reset the status of current command
 				authCmd = cmdAuthUsername
 				client.state = ClientCmd
 			}

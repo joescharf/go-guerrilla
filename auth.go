@@ -24,21 +24,21 @@ type Auth struct {
 	status   bool
 }
 
-type VaildateCallbackFunc func(username string, password string) bool
+type ValidateCallbackFunc func(username string, password string) bool
 
 var (
-	Validator = &AuthVaildator{}
+	Validator = &AuthValidator{}
 )
 
-type AuthVaildator struct {
-	handleFunctions []VaildateCallbackFunc
+type AuthValidator struct {
+	handleFunctions []ValidateCallbackFunc
 }
 
-func (v *AuthVaildator) AddAuthVaildator(f VaildateCallbackFunc) {
+func (v *AuthValidator) AddAuthValidator(f ValidateCallbackFunc) {
 	v.handleFunctions = append(v.handleFunctions, f)
 }
 
-func (v *AuthVaildator) Vaildate(a *Auth) bool {
+func (v *AuthValidator) Validate(a *Auth) bool {
 	for _, f := range v.handleFunctions {
 		username, err := base64.StdEncoding.DecodeString(a.username)
 		if err != nil {
