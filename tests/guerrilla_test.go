@@ -16,8 +16,9 @@ package test
 
 import (
 	"encoding/json"
-	"github.com/flashmob/go-guerrilla/mail/rfc5321"
 	"testing"
+
+	"github.com/flashmob/go-guerrilla/mail/rfc5321"
 
 	"time"
 
@@ -332,7 +333,7 @@ func TestShutDown(t *testing.T) {
 
 			// do a shutdown while the client is connected & in client state
 			go app.Shutdown()
-			time.Sleep(time.Millisecond * 150) // let server to Shutdown
+			time.Sleep(time.Millisecond * 300) // let server to Shutdown
 
 			// issue a command while shutting down
 			response, err := Command(conn, bufin, "HELP")
@@ -868,7 +869,7 @@ func TestHeloEhlo(t *testing.T) {
 				}
 			}
 
-			expected = fmt.Sprintf("250-%s Hello\r\n250-SIZE 100017\r\n250-PIPELINING\r\n250-STARTTLS\r\n250-ENHANCEDSTATUSCODES\r\n250 HELP\r\n", hostname)
+			expected = fmt.Sprintf("250-%s Hello\r\n250-SIZE 100017\r\n250-AUTH LOGIN\r\n250-PIPELINING\r\n250-STARTTLS\r\n250-ENHANCEDSTATUSCODES\r\n250 HELP\r\n", hostname)
 			if fullresp != expected {
 				t.Error("Server did not respond with [" + expected + "], it said [" + fullresp + "]")
 			}

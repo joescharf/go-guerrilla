@@ -263,6 +263,7 @@ func (c *AppConfig) getServers() map[string]*ServerConfig {
 // * log level set to "`debug`"
 // * timeout to 30 sec
 // * Backend configured with the following processors: `HeadersParser|Header|Debugger`
+// * Auth required is false
 // where it will log the received emails.
 func (c *AppConfig) setDefaults() error {
 	if c.LogFile == "" {
@@ -292,6 +293,7 @@ func (c *AppConfig) setDefaults() error {
 		sc.Timeout = defaultTimeout
 		sc.MaxSize = defaultMaxSize
 		c.Servers = append(c.Servers, sc)
+		sc.AuthRequired = false
 	} else {
 		// make sure each server has defaults correctly configured
 		for i := range c.Servers {

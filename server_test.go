@@ -11,12 +11,13 @@ import (
 
 	"crypto/tls"
 	"fmt"
+	"io/ioutil"
+	"net"
+
 	"github.com/flashmob/go-guerrilla/backends"
 	"github.com/flashmob/go-guerrilla/log"
 	"github.com/flashmob/go-guerrilla/mail"
 	"github.com/flashmob/go-guerrilla/mocks"
-	"io/ioutil"
-	"net"
 )
 
 // getMockServerConfig gets a mock ServerConfig struct used for creating a new server
@@ -181,6 +182,9 @@ func cleanTestArtifacts(t *testing.T) {
 		t.Error(err)
 	}
 	if err := deleteIfExists("./tests/pidfile2.pid"); err != nil {
+		t.Error(err)
+	}
+	if err := deleteIfExists("./goguerrilla.conf.api"); err != nil {
 		t.Error(err)
 	}
 
