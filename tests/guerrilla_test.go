@@ -375,7 +375,7 @@ func TestRFC2821LimitRecipients(t *testing.T) {
 	}
 	defer cleanTestArtifacts(t)
 	if startErrors := app.Start(); startErrors == nil {
-		conn, bufin, err := Connect(config.Servers[0], 20)
+		conn, bufin, err := Connect(config.Servers[0], 30)
 		if err != nil {
 			// handle error
 			t.Error(err.Error(), config.Servers[0].ListenInterface)
