@@ -43,7 +43,8 @@ type Address struct {
 	NullPath bool
 }
 
-type AuthResult struct {
+// Store the authentication username passward here
+type Account struct {
 	Username string
 	Password string
 }
@@ -83,7 +84,7 @@ type Envelope struct {
 	// Message sent in EHLO command
 	Helo string
 	//Auth Result
-	Auth AuthResult
+	Account Account
 	// Sender
 	MailFrom Address
 	// Recipients

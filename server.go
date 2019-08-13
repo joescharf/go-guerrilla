@@ -321,7 +321,7 @@ func (s *server) allowsHost(host string) bool {
 }
 
 // Verifies the client passed the auth if the auth required
-func (s *server) isAuth(authRequired bool, loginStatus bool) bool {
+func (s *server) isAuthentication(authRequired bool, loginStatus bool) bool {
 	return !(authRequired) || loginStatus
 }
 
@@ -398,7 +398,7 @@ func (s *server) handleClient(client *client) {
 	}
 	r := response.Canned
 	authCmd := cmdAuthUsername
-	auth := &Auth{
+	loginInfo := &LoginInfo{
 		status: false,
 	}
 	for client.isAlive() {
@@ -475,7 +475,7 @@ func (s *server) handleClient(client *client) {
 				}
 				client.sendResponse(r.SuccessMailCmd)
 			case cmdMAIL.match(cmd):
-				if !s.isAuth(sc.AuthRequired, auth.status) {
+				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -494,7 +494,7 @@ func (s *server) handleClient(client *client) {
 				}
 				client.sendResponse(r.SuccessMailCmd)
 			case cmdRCPT.match(cmd):
-				if !s.isAuth(sc.AuthRequired, auth.status) {
+				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -536,7 +536,7 @@ func (s *server) handleClient(client *client) {
 				client.kill()
 
 			case cmdDATA.match(cmd):
-				if !s.isAuth(sc.AuthRequired, auth.status) {
+				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -548,7 +548,7 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientData
 
 			case cmdAuth.match(cmd):
-				if auth.status == true {
+				if loginInfo.status == true {
 					client.sendResponse(r.FailNoIdentityChangesPermitted)
 					break
 				}
@@ -557,7 +557,7 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientAuth
 
 			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
-				if !s.isAuth(sc.AuthRequired, auth.status) {
+				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -613,36 +613,42 @@ func (s *server) handleClient(client *client) {
 		case ClientAuth:
 			var err error
 			switch {
+			// Read the username from client
 			case authCmd.match(cmdAuthUsername):
-				auth.username, err = client.authReader.ReadLine()
+				var username string
+				var bsUsername []byte
+				username, err = client.authReader.ReadLine()
+				if err != nil {
+					break
+				}
+				bsUsername, err = base64.StdEncoding.DecodeString(username)
+				loginInfo.username = string(bsUsername)
 				if err != nil {
 					break
 				}
 				// Status code and the base64 encoded Password
 				client.sendResponse("334 UGFzc3dvcmQ6")
 				authCmd = cmdAuthPassword
+			// Read the password from client
 			case authCmd.match(cmdAuthPassword):
-				auth.password, err = client.authReader.ReadLine()
+				var password string
+				var bsPassword []byte
+				password, err = client.authReader.ReadLine()
 				if err != nil {
 					break
 				}
-				isValidate := Validator.Validate(auth)
-				if isValidate {
-					auth.status = true
-					client.sendResponse(r.SuccessAuthentication)
-					username, err := base64.StdEncoding.DecodeString(auth.username)
-					if err != nil {
-						s.log().WithError(err).Error("Fail to decode username")
-						break
-					}
+				bsPassword, err = base64.StdEncoding.DecodeString(password)
+				if err != nil {
+					break
+				}
+				loginInfo.password = string(bsPassword)
 
-					password, err := base64.StdEncoding.DecodeString(auth.password)
-					if err != nil {
-						s.log().WithError(err).Error("Fail to decode password")
-						break
-					}
-					client.Auth.Username = string(username)
-					client.Auth.Password = string(password)
+				// Validate the username and password from validate function
+				isValid := Authentication.Validate(loginInfo)
+				if isValid {
+					loginInfo.status = true
+					client.Account.Username = loginInfo.username
+					client.Account.Password = loginInfo.password
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
@@ -662,7 +668,9 @@ func (s *server) handleClient(client *client) {
 				client.kill()
 			} else if err != nil {
 				s.log().WithError(err).Warnf("Read error: %s", client.RemoteIP)
-				client.kill()
+				client.sendResponse(r.FailAuthNotAccepted)
+				authCmd = cmdAuthUsername
+				client.state = ClientCmd
 			}
 
 			if s.isShuttingDown() {
