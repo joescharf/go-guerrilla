@@ -475,7 +475,7 @@ func (s *server) handleClient(client *client) {
 				}
 				client.sendResponse(r.SuccessMailCmd)
 			case cmdMAIL.match(cmd):
-				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
+				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -494,7 +494,7 @@ func (s *server) handleClient(client *client) {
 				}
 				client.sendResponse(r.SuccessMailCmd)
 			case cmdRCPT.match(cmd):
-				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
+				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -536,7 +536,7 @@ func (s *server) handleClient(client *client) {
 				client.kill()
 
 			case cmdDATA.match(cmd):
-				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
+				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -557,7 +557,7 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientAuth
 
 			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
-				if !s.isAuthentication(sc.AuthRequired, loginInfo.status) {
+				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
 					break
 				}
@@ -649,6 +649,7 @@ func (s *server) handleClient(client *client) {
 					loginInfo.status = true
 					client.Account.Username = loginInfo.username
 					client.Account.Password = loginInfo.password
+					client.sendResponse(r.SuccessAuthentication)
 				} else {
 					client.sendResponse(r.FailAuthNotAccepted)
 				}
@@ -668,9 +669,7 @@ func (s *server) handleClient(client *client) {
 				client.kill()
 			} else if err != nil {
 				s.log().WithError(err).Warnf("Read error: %s", client.RemoteIP)
-				client.sendResponse(r.FailAuthNotAccepted)
-				authCmd = cmdAuthUsername
-				client.state = ClientCmd
+				client.kill()
 			}
 
 			if s.isShuttingDown() {

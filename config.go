@@ -62,7 +62,7 @@ type ServerConfig struct {
 
 	// Extension for smtp which required the login before user send the Mail to server
 	// which base on the rfc4954
-	AuthRequired bool `json:"auth_required"`
+	AuthenticationRequired bool `json:"auth_required"`
 }
 
 type ServerTLSConfig struct {
@@ -293,7 +293,7 @@ func (c *AppConfig) setDefaults() error {
 		sc.Timeout = defaultTimeout
 		sc.MaxSize = defaultMaxSize
 		c.Servers = append(c.Servers, sc)
-		sc.AuthRequired = false
+		sc.AuthenticationRequired = false
 	} else {
 		// make sure each server has defaults correctly configured
 		for i := range c.Servers {
