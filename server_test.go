@@ -23,19 +23,27 @@ import (
 // getMockServerConfig gets a mock ServerConfig struct used for creating a new server
 func getMockServerConfig() *ServerConfig {
 	sc := &ServerConfig{
-		IsEnabled: true, // not tested here
-		Hostname:  "saggydimes.test.com",
-		MaxSize:   1024, // smtp message max size
-		TLS: ServerTLSConfig{
-			PrivateKeyFile: "./tests/mail.guerrillamail.com.key.pem",
-			PublicKeyFile:  "./tests/mail.guerrillamail.com.cert.pem",
-			StartTLSOn:     true,
-			AlwaysOn:       false,
-		},
+		IsEnabled:       true, // not tested here
+		Hostname:        "saggydimes.test.com",
+		MaxSize:         1024, // smtp message max size
 		Timeout:         5,
 		ListenInterface: "127.0.0.1:2529",
 		MaxClients:      30, // not tested here
 		LogFile:         "./tests/testlog",
+	}
+	return sc
+}
+
+func getMockServerConfigAuthRequired() *ServerConfig {
+	sc := &ServerConfig{
+		IsEnabled:              true, // not tested here
+		Hostname:               "saggydimes.test.com",
+		MaxSize:                1024, // smtp message max size
+		AuthenticationRequired: true,
+		Timeout:                5,
+		ListenInterface:        "127.0.0.1:2529",
+		MaxClients:             30, // not tested here
+		LogFile:                "./tests/testlog",
 	}
 	return sc
 }
@@ -58,7 +66,7 @@ func getMockServerConn(sc *ServerConfig, t *testing.T) (*mocks.Conn, *server) {
 	}
 	server, err := newServer(sc, backend, mainlog)
 	if err != nil {
-		//t.Error("new server failed because:", err)
+		t.Error("new server failed because:", err)
 	} else {
 		server.setAllowedHosts([]string{"test.com"})
 	}
@@ -146,6 +154,7 @@ func truncateIfExists(filename string) error {
 	}
 	return nil
 }
+
 func deleteIfExists(filename string) error {
 	if _, err := os.Stat(filename); !os.IsNotExist(err) {
 		return os.Remove(filename)
@@ -196,9 +205,7 @@ func cleanTestArtifacts(t *testing.T) {
 	}
 }
 
-func TestTLSConfig(t *testing.T) {
-
-	defer cleanTestArtifacts(t)
+func generateKeyfile(t *testing.T) {
 	if err := ioutil.WriteFile("rootca.test.pem", []byte(rootCAPK), 0644); err != nil {
 		t.Fatal("couldn't create rootca.test.pem file.", err)
 		return
@@ -211,6 +218,12 @@ func TestTLSConfig(t *testing.T) {
 		t.Fatal("couldn't create client.test.pem file.", err)
 		return
 	}
+
+}
+
+func TestTLSConfig(t *testing.T) {
+	defer cleanTestArtifacts(t)
+	generateKeyfile(t)
 
 	s := server{}
 	s.setConfig(&ServerConfig{
@@ -286,18 +299,18 @@ func TestHandleClient(t *testing.T) {
 	// Wait for the greeting from the server
 	r := textproto.NewReader(bufio.NewReader(conn.Client))
 	line, _ := r.ReadLine()
-	//	fmt.Println(line)
+
 	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
 	if err := w.PrintfLine("HELO test.test.com"); err != nil {
 		t.Error(err)
 	}
+
 	line, _ = r.ReadLine()
-	//fmt.Println(line)
 	if err := w.PrintfLine("QUIT"); err != nil {
 		t.Error(err)
 	}
+
 	line, _ = r.ReadLine()
-	//fmt.Println("line is:", line)
 	expected := "221 2.0.0 Bye"
 	if strings.Index(line, expected) != 0 {
 		t.Error("expected", expected, "but got:", line)
@@ -589,5 +602,184 @@ func TestAllowsHosts(t *testing.T) {
 
 	// no wilcards
 	s.setAllowedHosts([]string{"grr.la", "example.com"})
+
+}
+
+// The Authentication Success sholud return the success code
+func TestAuthenticationSuccess(t *testing.T) {
+	var mainlog log.Logger
+	var logOpenError error
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfigAuthRequired()
+	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+	if logOpenError != nil {
+		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+	}
+	conn, server := getMockServerConn(sc, t)
+	Authentication.AddValidator(func(u string, p string) bool {
+		if u == "helloworld" && p == "helloworld" {
+			return true
+		}
+		return false
+	})
+	// call the serve.handleClient() func in a goroutine.
+	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		server.handleClient(client)
+		wg.Done()
+	}()
+	// Wait for the greeting from the server
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+	r.ReadLine()
+	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+
+	if err := w.PrintfLine("HELO test.test.com"); err != nil {
+		t.Error(err)
+	}
+
+	line, _ := r.ReadLine()
+
+	if err := w.PrintfLine("AUTH LOGIN"); err != nil {
+		t.Error(err)
+	}
+
+	expect := "334 VXNlcm5hbWU6"
+	line, _ = r.ReadLine()
+	if strings.Compare(line, expect) != 0 {
+		t.Error("expected:", expect, "but got:", line)
+	}
+
+	if err := w.PrintfLine("aGVsbG93b3JsZA=="); err != nil {
+		t.Error(err)
+	}
+
+	expect = "334 UGFzc3dvcmQ6"
+	line, _ = r.ReadLine()
+	if strings.Compare(line, expect) != 0 {
+		t.Error("expected:", expect, "but got:", line)
+	}
+
+	if err := w.PrintfLine("aGVsbG93b3JsZA=="); err != nil {
+		t.Error(err)
+	}
+
+	line, _ = r.ReadLine()
+	expect = "235 2.7.0 Authentication Succeeded"
+	if strings.Compare(line, expect) != 0 {
+		t.Error("expected:", expect, "but got:", line)
+	}
+
+	if err := w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	wg.Wait() // wait for handleClient to exit
+}
+
+// The Authentication Success sholud return the failed code
+func TestAuthenticationFailed(t *testing.T) {
+	var mainlog log.Logger
+	var logOpenError error
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfigAuthRequired()
+	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+	if logOpenError != nil {
+		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+	}
+	conn, server := getMockServerConn(sc, t)
+	Authentication.AddValidator(func(string, string) bool { return false })
+	// call the serve.handleClient() func in a goroutine.
+	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		server.handleClient(client)
+		wg.Done()
+	}()
+	// Wait for the greeting from the server
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+	r.ReadLine()
+	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+
+	if err := w.PrintfLine("HELO test.test.com"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	if err := w.PrintfLine("AUTH LOGIN"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	if err := w.PrintfLine("aGVsbG93b3JkCg=="); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	if err := w.PrintfLine("aGVsbG93b3JkCg=="); err != nil {
+		t.Error(err)
+	}
+	line, _ := r.ReadLine()
+	expect := "535 5.7.1 Username and Password not accepted."
+	if strings.Compare(line, expect) != 0 {
+		t.Error("expect: ", expect, ",but got: ", line)
+	}
+
+	if err := w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	wg.Wait()
+}
+
+// The auth required command should be able to block the commands
+func TestCmdBeforeAuthentication(t *testing.T) {
+	var mainlog log.Logger
+	var logOpenError error
+	defer cleanTestArtifacts(t)
+	sc := getMockServerConfigAuthRequired()
+	mainlog, logOpenError = log.GetLogger(sc.LogFile, "debug")
+	if logOpenError != nil {
+		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
+	}
+	conn, server := getMockServerConn(sc, t)
+	Authentication.AddValidator(func(string, string) bool { return false })
+	// call the serve.handleClient() func in a goroutine.
+	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		server.handleClient(client)
+		wg.Done()
+	}()
+	// Wait for the greeting from the server
+	r := textproto.NewReader(bufio.NewReader(conn.Client))
+	r.ReadLine()
+	w := textproto.NewWriter(bufio.NewWriter(conn.Client))
+
+	if err := w.PrintfLine("HELO test.test.com"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	if err := w.PrintfLine("MAIL FROM: <helloworld@localhost.com>"); err != nil {
+		t.Error(err)
+	}
+	line, _ := r.ReadLine()
+	expect := "530 5.5.1 Authentication Required."
+	if strings.Compare(line, expect) != 0 {
+		t.Error("expect: ", expect, ", but got: ", line)
+	}
+
+	if err := w.PrintfLine("QUIT"); err != nil {
+		t.Error(err)
+	}
+	r.ReadLine()
+
+	wg.Wait()
 
 }
