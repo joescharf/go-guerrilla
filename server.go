@@ -644,14 +644,16 @@ func (s *server) handleClient(client *client) {
 				loginInfo.password = string(bsPassword)
 
 				// Validate the username and password from validate function
-				isValid := Authentication.Validate(loginInfo)
-				if isValid {
-					loginInfo.status = true
-					client.Account.Username = loginInfo.username
-					client.Account.Password = loginInfo.password
-					client.sendResponse(r.SuccessAuthentication)
-				} else {
+				orgID, inputID, err := Authentication.Validate(loginInfo)
+				if err != nil {
 					client.sendResponse(r.FailAuthNotAccepted)
+					break
+				}
+				loginInfo.status = true
+				client.Values["orgID"] = orgID
+				client.Values["inputID"] = inputID
+				if loginInfo.status {
+					client.sendResponse(r.SuccessAuthentication)
 				}
 				// Reset the status of current command
 				authCmd = cmdAuthUsername

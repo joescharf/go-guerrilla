@@ -23,26 +23,20 @@ type LoginInfo struct {
 	status   bool
 }
 
-type ValidateCallbackFunc func(username string, password string) bool
+type ValidateCallbackFunc func(username string, password string) (orgID string, intputID string, err error)
 
 var (
 	Authentication = &AuthenticationValidator{}
 )
 
 type AuthenticationValidator struct {
-	handleFunctions []ValidateCallbackFunc
+	handleFunctions ValidateCallbackFunc
 }
 
 func (v *AuthenticationValidator) AddValidator(f ValidateCallbackFunc) {
-	v.handleFunctions = append(v.handleFunctions, f)
+	v.handleFunctions = f
 }
 
-func (v *AuthenticationValidator) Validate(a *LoginInfo) bool {
-	for _, f := range v.handleFunctions {
-		isValid := f(a.username, a.password)
-		if !isValid {
-			return false
-		}
-	}
-	return true
+func (v *AuthenticationValidator) Validate(a *LoginInfo) (string, string, error) {
+	return v.handleFunctions(a.username, a.password)
 }

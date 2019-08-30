@@ -616,11 +616,11 @@ func TestAuthenticationSuccess(t *testing.T) {
 		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
 	}
 	conn, server := getMockServerConn(sc, t)
-	Authentication.AddValidator(func(u string, p string) bool {
+	Authentication.AddValidator(func(u string, p string) (string, string, bool) {
 		if u == "helloworld" && p == "helloworld" {
-			return true
+			return "000000", "aaaaaaaa", true
 		}
-		return false
+		return "", "", false
 	})
 	// call the serve.handleClient() func in a goroutine.
 	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
@@ -690,7 +690,7 @@ func TestAuthenticationFailed(t *testing.T) {
 		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
 	}
 	conn, server := getMockServerConn(sc, t)
-	Authentication.AddValidator(func(string, string) bool { return false })
+	Authentication.AddValidator(func(string, string) (string, string, bool) { return "", "", false })
 	// call the serve.handleClient() func in a goroutine.
 	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
 	var wg sync.WaitGroup
@@ -747,7 +747,7 @@ func TestCmdBeforeAuthentication(t *testing.T) {
 		mainlog.WithError(logOpenError).Errorf("Failed creating a logger for mock conn [%s]", sc.ListenInterface)
 	}
 	conn, server := getMockServerConn(sc, t)
-	Authentication.AddValidator(func(string, string) bool { return false })
+	Authentication.AddValidator(func(string, string) (string, string, bool) { return "", "", false })
 	// call the serve.handleClient() func in a goroutine.
 	client := NewClient(conn.Server, 1, mainlog, mail.NewPool(5))
 	var wg sync.WaitGroup
