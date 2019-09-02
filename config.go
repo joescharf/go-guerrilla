@@ -58,6 +58,10 @@ type ServerConfig struct {
 	// XClientOn when using a proxy such as Nginx, XCLIENT command is used to pass the
 	// original client's IP address & client's HELO
 	XClientOn bool `json:"xclient_on,omitempty"`
+
+	// Extension for smtp which required the login before user send the Mail to server
+	// which base on the rfc4954
+	AuthenticationRequired bool `json:"auth_required"`
 }
 
 type ServerTLSConfig struct {
@@ -255,6 +259,7 @@ func (c *AppConfig) getServers() map[string]*ServerConfig {
 // * log level set to "`debug`"
 // * timeout to 30 sec
 // * Backend configured with the following processors: `HeadersParser|Header|Debugger`
+// * Auth required is false
 // where it will log the received emails.
 func (c *AppConfig) setDefaults() error {
 	if c.LogFile == "" {
@@ -284,6 +289,7 @@ func (c *AppConfig) setDefaults() error {
 		sc.Timeout = defaultTimeout
 		sc.MaxSize = defaultMaxSize
 		c.Servers = append(c.Servers, sc)
+		sc.AuthenticationRequired = false
 	} else {
 		// make sure each server has defaults correctly configured
 		for i := range c.Servers {

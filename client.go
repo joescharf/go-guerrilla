@@ -27,6 +27,8 @@ const (
 	ClientCmd
 	// We have received the sender and recipient information
 	ClientData
+	// We have received the auth request
+	ClientAuth
 	// We have agreed with the client to secure the connection over TLS
 	ClientStartTLS
 	// Server will shutdown, client to shutdown on next command turn
@@ -38,6 +40,8 @@ type client struct {
 	ID          uint64
 	ConnectedAt time.Time
 	KilledAt    time.Time
+	// Auth login username password reader
+	authReader *textproto.Reader
 	// Number of errors encountered during session with this client
 	errors       int
 	state        ClientState
@@ -72,6 +76,9 @@ func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail
 
 	// used for reading the DATA state
 	c.smtpReader = textproto.NewReader(c.bufin.Reader)
+
+	// used for reading the Username and Password
+	c.authReader = textproto.NewReader(c.bufin.Reader)
 	return c
 }
 
