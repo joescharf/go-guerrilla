@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/emersion/go-sasl"
 	"github.com/flashmob/go-guerrilla/backends"
 	"github.com/flashmob/go-guerrilla/log"
 	"github.com/flashmob/go-guerrilla/mail"
@@ -69,19 +70,20 @@ type allowedHosts struct {
 type command []byte
 
 var (
-	cmdHELO     command = []byte("HELO")
-	cmdEHLO     command = []byte("EHLO")
-	cmdHELP     command = []byte("HELP")
-	cmdXCLIENT  command = []byte("XCLIENT")
-	cmdMAIL     command = []byte("MAIL FROM:")
-	cmdRCPT     command = []byte("RCPT TO:")
-	cmdRSET     command = []byte("RSET")
-	cmdVRFY     command = []byte("VRFY")
-	cmdNOOP     command = []byte("NOOP")
-	cmdQUIT     command = []byte("QUIT")
-	cmdDATA     command = []byte("DATA")
-	cmdSTARTTLS command = []byte("STARTTLS")
-	cmdAuth     command = []byte("AUTH LOGIN")
+	cmdHELO      command = []byte("HELO")
+	cmdEHLO      command = []byte("EHLO")
+	cmdHELP      command = []byte("HELP")
+	cmdXCLIENT   command = []byte("XCLIENT")
+	cmdMAIL      command = []byte("MAIL FROM:")
+	cmdRCPT      command = []byte("RCPT TO:")
+	cmdRSET      command = []byte("RSET")
+	cmdVRFY      command = []byte("VRFY")
+	cmdNOOP      command = []byte("NOOP")
+	cmdQUIT      command = []byte("QUIT")
+	cmdDATA      command = []byte("DATA")
+	cmdSTARTTLS  command = []byte("STARTTLS")
+	cmdAuth      command = []byte("AUTH LOGIN")
+	cmdAuthPlain command = []byte("AUTH PLAIN")
 )
 
 func (c command) match(in []byte) bool {
@@ -372,7 +374,7 @@ func (s *server) handleClient(client *client) {
 
 	// Extended feature advertisements
 	messageSize := fmt.Sprintf("250-SIZE %d\r\n", sc.MaxSize)
-	advertiseAuth := "250-AUTH LOGIN\r\n"
+	advertiseAuth := "250-AUTH PLAIN LOGIN\r\n"
 	pipelining := "250-PIPELINING\r\n"
 	advertiseTLS := "250-STARTTLS\r\n"
 	advertiseEnhancedStatusCodes := "250-ENHANCEDSTATUSCODES\r\n"
@@ -401,6 +403,7 @@ func (s *server) handleClient(client *client) {
 	loginInfo := &LoginInfo{
 		status: false,
 	}
+	var initialResponse []byte
 	for client.isAlive() {
 		switch client.state {
 		case ClientGreeting:
@@ -409,6 +412,7 @@ func (s *server) handleClient(client *client) {
 		case ClientCmd:
 			client.bufin.setLimit(CommandLineMaxLength)
 			input, err := s.readCommand(client)
+			initialResponse = input
 			s.log().Debugf("Client sent: %s", input)
 			if err == io.EOF {
 				s.log().WithError(err).Warnf("Client closed the connection: %s", client.RemoteIP)
@@ -556,6 +560,14 @@ func (s *server) handleClient(client *client) {
 				client.sendResponse("334 VXNlcm5hbWU6")
 				client.state = ClientAuth
 
+			// AUTH PLAIN
+			case cmdAuthPlain.match(cmd):
+				if loginInfo.status == true {
+					client.sendResponse(r.FailNoIdentityChangesPermitted)
+					break
+				}
+				client.state = ClientAuthPlain
+
 			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
 				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
 					client.sendResponse(r.FailAuthRequired)
@@ -609,6 +621,82 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientShutdown
 			}
 			client.resetTransaction()
+
+		case ClientAuthPlain:
+			// Based on https://github.com/emersion/go-smtp/blob/04984480e0a5c0f8646a33942ac02b999882a58c/conn.go
+
+			// Parse initial response
+			parts := strings.Fields(string(initialResponse))
+			var ir []byte
+			var err error
+			if len(parts) > 1 {
+				irTrim := string(bytes.Trim(initialResponse[10:], " "))
+				ir, err = base64.StdEncoding.DecodeString(irTrim)
+				if err != nil {
+					break
+				}
+			}
+
+			// Instantiate the sasl plain server handler
+			sPlainSrv := sasl.NewPlainServer(func(identity, username, password string) error {
+				loginInfo.username = username
+				loginInfo.password = password
+
+				// Validate the username and password from validate function
+				orgID, inputID, err := Authentication.Validate(loginInfo)
+				if err != nil {
+					client.sendResponse(r.FailAuthNotAccepted)
+					return err
+				}
+
+				loginInfo.status = true
+				client.Values["orgID"] = orgID
+				client.Values["inputID"] = inputID
+				if loginInfo.status {
+					client.sendResponse(r.SuccessAuthentication)
+				}
+				// Reset the status of current command
+				authCmd = cmdAuthUsername
+				client.state = ClientCmd
+
+				return nil
+			})
+
+			// Loop until we're done with the challenge/response cycle or error
+			// TODO: Fix the error responses
+			response := ir
+			for {
+				challenge, done, err := sPlainSrv.Next(response)
+				if err != nil {
+					client.sendResponse(r.FailAuthNotAccepted)
+					break
+				}
+				s.log().Debugln(challenge, done, err)
+				// If we're done, we break out
+				if done {
+					break
+				}
+				// If the challenge > 0 we have to encode the string and write out to client
+				encoded := ""
+				if len(challenge) > 0 {
+					encoded = base64.StdEncoding.EncodeToString(challenge)
+				}
+				client.sendResponse("334 " + encoded)
+
+				// Read the next set of input from client
+				input, err := s.readCommand(client)
+				encoded = string(input)
+				if err != nil {
+					break // TODO: error handling
+				}
+
+				response, err = base64.StdEncoding.DecodeString(encoded)
+				if err != nil {
+					client.sendResponse(r.FailAuthNotAccepted)
+					break
+				}
+
+			}
 
 		case ClientAuth:
 			var err error

@@ -29,6 +29,8 @@ const (
 	ClientData
 	// We have received the auth request
 	ClientAuth
+	// We have received auth plain request
+	ClientAuthPlain
 	// We have agreed with the client to secure the connection over TLS
 	ClientStartTLS
 	// Server will shutdown, client to shutdown on next command turn
