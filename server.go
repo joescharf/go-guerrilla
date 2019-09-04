@@ -643,15 +643,14 @@ func (s *server) handleClient(client *client) {
 				loginInfo.password = password
 
 				// Validate the username and password from validate function
-				orgID, inputID, err := Authentication.Validate(loginInfo)
+				userID, err := Authentication.Validate(loginInfo)
 				if err != nil {
 					client.sendResponse(r.FailAuthNotAccepted)
 					return err
 				}
 
 				loginInfo.status = true
-				client.Values["orgID"] = orgID
-				client.Values["inputID"] = inputID
+				client.Values["authUserID"] = userID
 				if loginInfo.status {
 					client.sendResponse(r.SuccessAuthentication)
 				}
@@ -732,14 +731,13 @@ func (s *server) handleClient(client *client) {
 				loginInfo.password = string(bsPassword)
 
 				// Validate the username and password from validate function
-				orgID, inputID, err := Authentication.Validate(loginInfo)
+				userID, err := Authentication.Validate(loginInfo)
 				if err != nil {
 					client.sendResponse(r.FailAuthNotAccepted)
 					break
 				}
 				loginInfo.status = true
-				client.Values["orgID"] = orgID
-				client.Values["inputID"] = inputID
+				client.Values["authUserID"] = userID
 				if loginInfo.status {
 					client.sendResponse(r.SuccessAuthentication)
 				}
