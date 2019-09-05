@@ -650,7 +650,12 @@ func (s *server) handleClient(client *client) {
 				}
 
 				loginInfo.status = true
-				client.Values["authUserID"] = userID
+				// In order to persist the authentication across multiple email submissions,
+				// Must set the authID on the client session which is set on the envelope at
+				// Reset and Borrow.
+				client.setAuthID(userID)
+
+				// client.Values["authID"] = userID
 				if loginInfo.status {
 					client.sendResponse(r.SuccessAuthentication)
 				}
@@ -670,7 +675,6 @@ func (s *server) handleClient(client *client) {
 					client.sendResponse(r.FailAuthNotAccepted)
 					break
 				}
-				s.log().Debugln(challenge, done, err)
 				// If we're done, we break out
 				if done {
 					break
@@ -737,7 +741,12 @@ func (s *server) handleClient(client *client) {
 					break
 				}
 				loginInfo.status = true
-				client.Values["authUserID"] = userID
+
+				// In order to persist the authentication across multiple email submissions,
+				// Must set the authID on the client session which is set on the envelope at
+				// Reset and Borrow.
+				client.setAuthID(userID)
+
 				if loginInfo.status {
 					client.sendResponse(r.SuccessAuthentication)
 				}

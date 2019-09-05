@@ -43,12 +43,6 @@ type Address struct {
 	NullPath bool
 }
 
-// Store the authentication username passward here
-type Account struct {
-	Username string
-	Password string
-}
-
 func (ep *Address) String() string {
 	return fmt.Sprintf("%s@%s", ep.User, ep.Host)
 }
@@ -83,8 +77,8 @@ type Envelope struct {
 	RemoteIP string
 	// Message sent in EHLO command
 	Helo string
-	//Auth Result
-	Account Account
+	//Authentication identifier (i.e. UserID)
+	authID string
 	// Sender
 	MailFrom Address
 	// Recipients
@@ -109,11 +103,12 @@ type Envelope struct {
 	sync.Mutex
 }
 
-func NewEnvelope(remoteAddr string, clientID uint64) *Envelope {
+func NewEnvelope(remoteAddr string, clientID uint64, authID string) *Envelope {
 	return &Envelope{
 		RemoteIP: remoteAddr,
 		Values:   make(map[string]interface{}),
 		QueuedId: queuedID(clientID),
+		authID:   authID,
 	}
 }
 
@@ -173,7 +168,8 @@ func (e *Envelope) String() string {
 }
 
 // ResetTransaction is called when the transaction is reset (keeping the connection open)
-func (e *Envelope) ResetTransaction() {
+// Also persists and sets Values[authID] from the client
+func (e *Envelope) ResetTransaction(authID string) {
 
 	// ensure not processing by the backend, will only get lock if finished, otherwise block
 	e.Lock()
@@ -190,7 +186,18 @@ func (e *Envelope) ResetTransaction() {
 	e.Header = nil
 	e.Hashes = make([]string, 0)
 	e.DeliveryHeader = ""
+	e.authID = authID
 	e.Values = make(map[string]interface{})
+}
+func (e *Envelope) SetAuthID(authID string) {
+	// ensure not processing by the backend, will only get lock if finished, otherwise block
+	e.Lock()
+	// got the lock, it means processing finished
+	e.Unlock()
+	e.authID = authID
+}
+func (e *Envelope) GetAuthID() string {
+	return e.authID
 }
 
 // Reseed is called when used with a new connection, once it's accepted
@@ -198,6 +205,7 @@ func (e *Envelope) Reseed(remoteIP string, clientID uint64) {
 	e.RemoteIP = remoteIP
 	e.QueuedId = queuedID(clientID)
 	e.Helo = ""
+	e.authID = ""
 	e.TLS = false
 }
 
@@ -280,14 +288,14 @@ func NewPool(poolSize int) *Pool {
 	}
 }
 
-func (p *Pool) Borrow(remoteAddr string, clientID uint64) *Envelope {
+func (p *Pool) Borrow(remoteAddr string, clientID uint64, authID string) *Envelope {
 	var e *Envelope
 	p.sem <- true // block the envelope until more room
 	select {
 	case e = <-p.pool:
 		e.Reseed(remoteAddr, clientID)
 	default:
-		e = NewEnvelope(remoteAddr, clientID)
+		e = NewEnvelope(remoteAddr, clientID, authID)
 	}
 	return e
 }

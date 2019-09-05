@@ -42,6 +42,8 @@ type client struct {
 	ID          uint64
 	ConnectedAt time.Time
 	KilledAt    time.Time
+	authID      string
+
 	// Auth login username password reader
 	authReader *textproto.Reader
 	// Number of errors encountered during session with this client
@@ -68,7 +70,7 @@ func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail
 		conn: conn,
 		// Envelope will be borrowed from the envelope pool
 		// the envelope could be 'detached' from the client later when processing
-		Envelope:    envelope.Borrow(getRemoteAddr(conn), clientID),
+		Envelope:    envelope.Borrow(getRemoteAddr(conn), clientID, ""),
 		ConnectedAt: time.Now(),
 		bufin:       newSMTPBufferedReader(conn),
 		bufout:      bufio.NewWriter(conn),
@@ -81,6 +83,7 @@ func NewClient(conn net.Conn, clientID uint64, logger log.Logger, envelope *mail
 
 	// used for reading the Username and Password
 	c.authReader = textproto.NewReader(c.bufin.Reader)
+
 	return c
 }
 
@@ -127,7 +130,11 @@ func (c *client) sendResponse(r ...interface{}) {
 // -End of DATA command
 // TLS handshake
 func (c *client) resetTransaction() {
-	c.Envelope.ResetTransaction()
+	c.Envelope.ResetTransaction(c.authID)
+
+	// Set the authentication ID for the client
+	// c.log.Debugf("resetTransaction() c.AuthID: %s, Envelope.Values[authID]: %s", c.AuthID, c.Envelope.Values["authID"])
+	// c.Envelope.Values["authID"] = c.AuthID
 }
 
 // isInTransaction returns true if the connection is inside a transaction.
@@ -143,6 +150,7 @@ func (c *client) isInTransaction() bool {
 // kill flags the connection to close on the next turn
 func (c *client) kill() {
 	c.KilledAt = time.Now()
+	c.authID = "" // Clear the client session AuthID
 }
 
 // isAlive returns true if the client is to close on the next turn
@@ -180,8 +188,16 @@ func (c *client) init(conn net.Conn, clientID uint64, ep *mail.Pool) {
 	c.ConnectedAt = time.Now()
 	c.ID = clientID
 	c.errors = 0
+	c.authID = ""
 	// borrow an envelope from the envelope pool
-	c.Envelope = ep.Borrow(getRemoteAddr(conn), clientID)
+	c.Envelope = ep.Borrow(getRemoteAddr(conn), clientID, c.authID)
+}
+
+// setAuthID sets the client AuthID value and sets calls the method to
+// set the Envelope AuthID as well.
+func (c *client) setAuthID(authID string) {
+	c.authID = authID
+	c.Envelope.SetAuthID(authID)
 }
 
 // getID returns the client's unique ID
