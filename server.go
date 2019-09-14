@@ -569,10 +569,6 @@ func (s *server) handleClient(client *client) {
 				client.state = ClientAuthPlain
 
 			case sc.TLS.StartTLSOn && cmdSTARTTLS.match(cmd):
-				if !s.isAuthentication(sc.AuthenticationRequired, loginInfo.status) {
-					client.sendResponse(r.FailAuthRequired)
-					break
-				}
 				client.sendResponse(r.SuccessStartTLSCmd)
 				client.state = ClientStartTLS
 			default:
