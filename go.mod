@@ -1,6 +1,6 @@
 module github.com/flashmob/go-guerrilla
 
-go 1.12
+go 1.13
 
 require (
 	github.com/alecthomas/chroma v0.6.6 // indirect

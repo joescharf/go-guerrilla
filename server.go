@@ -640,6 +640,7 @@ func (s *server) handleClient(client *client) {
 
 				// Validate the username and password from validate function
 				userID, err := Authentication.Validate(loginInfo)
+				s.log().Debugf("after Authentication.Validate(loginInfo): userID: %s, err: %s\n", userID, err)
 				if err != nil {
 					client.sendResponse(r.FailAuthNotAccepted)
 					return err
